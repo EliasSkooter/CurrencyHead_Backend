@@ -53,7 +53,7 @@ app.post("/register", async (req, res) => {
 
         //Encrypt user password
         encryptedPassword = await bcrypt.hash(password, 15);
-        console.log(encryptedPassword)
+        
         // Create user in our database
         const user = await User.create({
             first_name,
@@ -75,9 +75,11 @@ app.post("/register", async (req, res) => {
         user.token = token;
 
         // return new user
-        res.status(201).json(user);
+        console.log("registered user successfully...");
+        res.status(200).json(user);
     } catch (err) {
         console.log(err);
+        res.status(400).send("registration failed");
     }
     // Our register logic ends here
 });
@@ -87,6 +89,7 @@ app.post("/register", async (req, res) => {
 app.post("/login", async (req, res) => {
 
     // Our login logic starts here
+    console.log("req ==> " + req);
     try {
         // Get user input
         const {
@@ -117,15 +120,26 @@ app.post("/login", async (req, res) => {
 
             // user
             //   res.status(200).json(user);
-            res.redirect(url.format({
-                pathname: "/welcome",
-                query: {
-                    "token": user.token,
-                    "first_name": user.first_name,
-                }
-            }));
-        } else
+            // res.redirect(url.format({
+            //     pathname: "/welcome",
+            //     query: {
+            //         "token": user.token,
+            //         "first_name": user.first_name,
+            //     }
+            // }));
+            let userDetails = {
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "email": user.email,
+                "token": user.token,
+                "currencies": user.currencies,
+            };
+            res.send(userDetails);
+
+        } else {
+            console.log("login failed...");
             res.status(400).send("Invalid Credentials");
+        }
     } catch (err) {
         console.log(err);
     }
