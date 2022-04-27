@@ -6,7 +6,10 @@ const jwt = require("jsonwebtoken");
 const app = express();
 var bodyParser = require('body-parser');
 const Currency = require("./model/currency");
-
+const IP = "http://127.0.0.1:9090";
+const fetch = require('node-fetch');
+const EventEmitter = require('events');
+const emitter = new EventEmitter();
 app.use(bodyParser.urlencoded({
     extended: false
 }));
@@ -230,7 +233,7 @@ app.post("/updateCurrency", async (req, res) => {
         // Get user input
         const {
             name,
-            value
+            value   
         } = req.body;
         // Validate user input
         if (!(name && value)) {
@@ -255,7 +258,7 @@ app.post("/updateCurrency", async (req, res) => {
             const currency = await Currency.create({
                 name,
                 value,
-                //   updateDate: new Date().toISOString(), // sanitize: convert email to lowercase
+                updateDate: new Date().toISOString(), // sanitize: convert email to lowercase
             });
             res.status(201).json(currency);
         }
@@ -272,6 +275,49 @@ app.get("/getCurrencies", async (req, res) => {
     res.status(200).json(allCurrencies);
 });
 
+//function for fetching currencies
+function fetchCurrencies(){
+    fetch("http://api.exchangeratesapi.io/v1/latest?access_key=6fac61839f259e7a3390db2d491dc263", {
+            method: 'GET',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json'
+            },
+
+        })
+            .then(res => res.json())
+            .then(async res => {
+                console.log("Successfully retrieves exchange rates...", res.rates['AED']);
+                const result = Object.keys(res.rates).map(key => ({ [key]: res.rates[key] }));
+
+                for (let item of result) {
+                    let resultString = JSON.stringify(item);
+                    let name = resultString.substring(resultString.indexOf('"') + 1, resultString.lastIndexOf('"'));
+                    let value = resultString.substring(resultString.indexOf(":") + 1, resultString.indexOf("}"));
+                    console.log("name =>", name);
+                    console.log("rate =>", parseInt(value));
+
+                    let bodyReq = {
+                        name: name,
+                        value:(value/1.056401), //converting it to dollar
+                        
+                    }
+
+                    await fetch(IP + "/updateCurrency", {
+                        method: 'POST',
+                        headers: {
+                            Accept: 'application/json',
+                            'Content-type': 'application/json'
+                        },
+                        body: JSON.stringify(bodyReq)
+                    })
+                        .then(res => res.json())
+                        .then(res => {
+                            console.log("saved currency!", res);
+                        })
+                }
+});
+}
 //*******
 
 app.use("*", (req, res) => {
@@ -284,5 +330,9 @@ app.use("*", (req, res) => {
         },
     });
 });
-
+function intervalFunc() {
+    console.log('WIIII PEEE!');
+}
+setInterval(intervalFunc, 10000);
+// fetchCurrencies();
 module.exports = app;
