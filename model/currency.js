@@ -1,4 +1,14 @@
 const mongoose = require("mongoose");
+const currencHistorySchema = new mongoose.Schema({
+    value:{
+        type: Number,
+        required: true
+    },
+    date:{
+        type: Date,
+        required:true
+    }
+});
 const currencySchema = new mongoose.Schema({
     name: {
         type: String,
@@ -15,8 +25,9 @@ const currencySchema = new mongoose.Schema({
     },
     fluctuation: {
         type: Number,
-        default: 1
+        default: 6
     },
+    history:[currencHistorySchema],
 });
 
 module.exports = mongoose.model("currency", currencySchema);

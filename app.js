@@ -221,9 +221,9 @@ app.post("/deleteUserCurrency", async (req, res) => {
 
 //********
 
-app.get("/welcome", auth, (req, res) => {
-    res.status(200).send(`Welcome 🙌 ${req.query.first_name}`);
-});
+// app.get("/welcome", auth, (req, res) => {
+//     res.status(200).send(`Welcome 🙌 ${req.query.first_name}`);
+// });
 
 // CURRENCY APIS
 app.post("/updateCurrency", async (req, res) => {
@@ -233,7 +233,10 @@ app.post("/updateCurrency", async (req, res) => {
         // Get user input
         const {
             name,
-            value   
+            value,
+            //added fluctuation
+            fluctuation,
+            history
         } = req.body;
         // Validate user input
         if (!(name && value)) {
@@ -251,7 +254,8 @@ app.post("/updateCurrency", async (req, res) => {
             }, {
                 value,
                 updateDate: new Date().toISOString(),
-                fluctuation: 1
+                fluctuation,
+                history
             })
             res.status(201).json(updatedCurrency);
         } else {
@@ -277,6 +281,15 @@ app.get("/getCurrencies", async (req, res) => {
 
 //function for fetching currencies
 function fetchCurrencies(){
+    let hourToday = new Date().getHours();
+    let minUpdateFluctuation;
+    if(hourToday>=0 && hourToday<4) minUpdateFluctuation = 6;   
+    else if(hourToday>=4 && hourToday<8) minUpdateFluctuation = 5;
+    else if(hourToday>=8 && hourToday<12) minUpdateFluctuation = 4;
+    else if(hourToday>=12 && hourToday<16) minUpdateFluctuation = 3;
+    else if(hourToday>=16 && hourToday<20) minUpdateFluctuation = 2;
+    else if(hourToday>=20) minUpdateFluctuation = 1;
+    console.log(minUpdateFluctuation);
     fetch("http://api.exchangeratesapi.io/v1/latest?access_key=6fac61839f259e7a3390db2d491dc263", {
             method: 'GET',
             headers: {
@@ -289,35 +302,56 @@ function fetchCurrencies(){
             .then(async res => {
                 console.log("Successfully retrieves exchange rates...", res.rates['AED']);
                 const result = Object.keys(res.rates).map(key => ({ [key]: res.rates[key] }));
-
+                let currenciesMap = new Map(); 
+                (await Currency.find()).forEach((curr)=>{currenciesMap.set(curr.name,{value: curr.value,fluctuation: curr.fluctuation,date : curr.updateDate})});
+                // console.log(currenciesMap);
+                
                 for (let item of result) {
                     let resultString = JSON.stringify(item);
                     let name = resultString.substring(resultString.indexOf('"') + 1, resultString.lastIndexOf('"'));
                     let value = resultString.substring(resultString.indexOf(":") + 1, resultString.indexOf("}"));
-                    console.log("name =>", name);
-                    console.log("rate =>", parseInt(value));
+                    let fluctuation = currenciesMap.get(name).fluctuation;
+                    let oldValue = currenciesMap.get(name).value;
+                    let sensitivityThreshold = 0.1;
+                    // console.log("name =>", name);
+                    // console.log("rate =>", parseInt(value));
+                    if(fluctuation>=minUpdateFluctuation){
+                        if((Math.abs(value-oldValue)/oldValue)>sensitivityThreshold){
+                            fluctuation++;
+                            fluctuation = (fluctuation>6) ? 6:fluctuation;
+                        }
+                        else{
+                            fluctuation--;
+                            fluctuation = (fluctuation<1) ? 1:fluctuation;
+                        }
 
-                    let bodyReq = {
-                        name: name,
-                        value:(value/1.056401), //converting it to dollar
+                        let bodyReq = {
+                            name: name,
+                            value: value, 
+                            fluctuation:fluctuation,
+                            history:{value : oldValue, date: currenciesMap.get(name).date}
+                        }
                         
-                    }
-
-                    await fetch(IP + "/updateCurrency", {
-                        method: 'POST',
-                        headers: {
-                            Accept: 'application/json',
-                            'Content-type': 'application/json'
-                        },
-                        body: JSON.stringify(bodyReq)
-                    })
-                        .then(res => res.json())
-                        .then(res => {
-                            console.log("saved currency!", res);
+                        await fetch(IP + "/updateCurrency", {
+                            method: 'POST',
+                            headers: {
+                                Accept: 'application/json',
+                                'Content-type': 'application/json'
+                            },
+                            body: JSON.stringify(bodyReq)
                         })
+                            .then(res => res.json())
+                            .then(res => {
+                                console.log("saved currency!", res);
+                            })
+                    }
                 }
 });
 }
+
+//currency update every 4 hours
+setInterval(fetchCurrencies, 14400000);
+
 //*******
 
 app.use("*", (req, res) => {
@@ -330,9 +364,6 @@ app.use("*", (req, res) => {
         },
     });
 });
-function intervalFunc() {
-    console.log('WIIII PEEE!');
-}
-setInterval(intervalFunc, 10000);
-// fetchCurrencies();
+
+
 module.exports = app;
