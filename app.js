@@ -255,7 +255,7 @@ app.post("/updateCurrency", async (req, res) => {
                 value,
                 updateDate: new Date().toISOString(),
                 fluctuation,
-                history
+                $push: {history: history}
             })
             res.status(201).json(updatedCurrency);
         } else {
@@ -285,7 +285,7 @@ function fetchCurrencies(){
     let minUpdateFluctuation;
     if(hourToday>=0 && hourToday<4) minUpdateFluctuation = 6;   
     else if(hourToday>=4 && hourToday<8) minUpdateFluctuation = 5;
-    else if(hourToday>=8 && hourToday<12) minUpdateFluctuation = 4;
+    else if(hourToday>=8 && hourToday<12) minUpdateFluctuation = 1;
     else if(hourToday>=12 && hourToday<16) minUpdateFluctuation = 3;
     else if(hourToday>=16 && hourToday<20) minUpdateFluctuation = 2;
     else if(hourToday>=20) minUpdateFluctuation = 1;
@@ -310,7 +310,9 @@ function fetchCurrencies(){
                     let resultString = JSON.stringify(item);
                     let name = resultString.substring(resultString.indexOf('"') + 1, resultString.lastIndexOf('"'));
                     let value = resultString.substring(resultString.indexOf(":") + 1, resultString.indexOf("}"));
+                    let history = resultString.substring(resultString)
                     let fluctuation = currenciesMap.get(name).fluctuation;
+                    console.log("fluctuation =====> " + fluctuation);
                     let oldValue = currenciesMap.get(name).value;
                     let sensitivityThreshold = 0.1;
                     // console.log("name =>", name);
@@ -328,7 +330,7 @@ function fetchCurrencies(){
                         let bodyReq = {
                             name: name,
                             value: value, 
-                            fluctuation:fluctuation,
+                            fluctuation:6,
                             history:{value : oldValue, date: currenciesMap.get(name).date}
                         }
                         
@@ -351,8 +353,6 @@ function fetchCurrencies(){
 
 //currency update every 4 hours
 setInterval(fetchCurrencies, 14400000);
-
-//*******
 
 app.use("*", (req, res) => {
     res.status(404).json({
