@@ -180,7 +180,7 @@ app.post("/addUserCurrency", async (req, res) => {
             }
         });
 
-        res.status(201).json(user);
+        res.status(201).json(curr._id);
     } catch (err) {
         console.log(err);
     }
@@ -213,7 +213,7 @@ app.post("/deleteUserCurrency", async (req, res) => {
             }
         });
 
-        res.status(201).json(user);
+        res.status(201).json(curr._id);
     } catch (err) {
         console.log(err);
     }
