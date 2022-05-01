@@ -56,7 +56,7 @@ app.post("/register", async (req, res) => {
 
         //Encrypt user password
         encryptedPassword = await bcrypt.hash(password, 15);
-        
+
         // Create user in our database
         const user = await User.create({
             first_name,
@@ -255,7 +255,9 @@ app.post("/updateCurrency", async (req, res) => {
                 value,
                 updateDate: new Date().toISOString(),
                 fluctuation,
-                $push: {history: history}
+                $push: {
+                    history: history
+                }
             })
             res.status(201).json(updatedCurrency);
         } else {
@@ -280,15 +282,20 @@ app.get("/getCurrencies", async (req, res) => {
 });
 
 //function for fetching currencies
-function fetchCurrencies(){
+function fetchCurrencies() {
+    updateLbp();
     let hourToday = new Date().getHours();
     let minUpdateFluctuation;
-    if(hourToday>=0 && hourToday<4) minUpdateFluctuation = 6;   
-    else if(hourToday>=4 && hourToday<8) minUpdateFluctuation = 5;
-    else if(hourToday>=8 && hourToday<12) minUpdateFluctuation = 1;
-    else if(hourToday>=12 && hourToday<16) minUpdateFluctuation = 3;
-    else if(hourToday>=16 && hourToday<20) minUpdateFluctuation = 2;
-    else if(hourToday>=20) minUpdateFluctuation = 1;
+    if (hourToday >= 0 && hourToday < 4) minUpdateFluctuation = 6;
+    else if (hourToday >= 4 && hourToday < 8) minUpdateFluctuation = 5;
+    else if (hourToday >= 8 && hourToday < 12) minUpdateFluctuation = 1;
+    else if (hourToday >= 12 && hourToday < 16) minUpdateFluctuation = 3;
+    else if (hourToday >= 16 && hourToday < 20) minUpdateFluctuation = 2;
+    else if (hourToday >= 20) minUpdateFluctuation = 1;
+
+    // for the sake of manual update of all currencies
+    // minUpdateFluctuation = 6;
+
     console.log(minUpdateFluctuation);
     fetch("http://api.exchangeratesapi.io/v1/latest?access_key=6fac61839f259e7a3390db2d491dc263", {
             method: 'GET',
@@ -298,61 +305,152 @@ function fetchCurrencies(){
             },
 
         })
-            .then(res => res.json())
-            .then(async res => {
-                console.log("Successfully retrieves exchange rates...", res.rates['AED']);
-                const result = Object.keys(res.rates).map(key => ({ [key]: res.rates[key] }));
-                let currenciesMap = new Map(); 
-                (await Currency.find()).forEach((curr)=>{currenciesMap.set(curr.name,{value: curr.value,fluctuation: curr.fluctuation,date : curr.updateDate})});
-                // console.log(currenciesMap);
-                
-                for (let item of result) {
-                    let resultString = JSON.stringify(item);
-                    let name = resultString.substring(resultString.indexOf('"') + 1, resultString.lastIndexOf('"'));
-                    let value = resultString.substring(resultString.indexOf(":") + 1, resultString.indexOf("}"));
-                    let history = resultString.substring(resultString)
-                    let fluctuation = currenciesMap.get(name).fluctuation;
-                    console.log("fluctuation =====> " + fluctuation);
-                    let oldValue = currenciesMap.get(name).value;
-                    let sensitivityThreshold = 0.1;
-                    // console.log("name =>", name);
-                    // console.log("rate =>", parseInt(value));
-                    if(fluctuation>=minUpdateFluctuation){
-                        if((Math.abs(value-oldValue)/oldValue)>sensitivityThreshold){
-                            fluctuation++;
-                            fluctuation = (fluctuation>6) ? 6:fluctuation;
-                        }
-                        else{
-                            fluctuation--;
-                            fluctuation = (fluctuation<1) ? 1:fluctuation;
-                        }
+        .then(res => res.json())
+        .then(async res => {
+            console.log("Successfully retrieves exchange rates...", res.rates['AED']);
+            const result = Object.keys(res.rates).map(key => ({
+                [key]: res.rates[key]
+            }));
+            let currenciesMap = new Map();
+            (await Currency.find()).forEach((curr) => {
+                currenciesMap.set(curr.name, {
+                    value: curr.value,
+                    fluctuation: curr.fluctuation,
+                    date: curr.updateDate
+                })
+            });
+            console.log(currenciesMap);
 
-                        let bodyReq = {
-                            name: name,
-                            value: value, 
-                            fluctuation:6,
-                            history:{value : oldValue, date: currenciesMap.get(name).date}
+            for (let item of result) {
+                let resultString = JSON.stringify(item);
+                let name = resultString.substring(resultString.indexOf('"') + 1, resultString.lastIndexOf('"'));
+                let value = resultString.substring(resultString.indexOf(":") + 1, resultString.indexOf("}"));
+                let fluctuation = currenciesMap.get(name).fluctuation;
+                console.log("fluctuation =====> " + fluctuation);
+                let oldValue = currenciesMap.get(name).value;
+                let sensitivityThreshold = 0.1;
+                console.log("name =>", name);
+                console.log("rate =>", parseInt(value));
+                if (fluctuation >= minUpdateFluctuation) {
+                    if ((Math.abs(value - oldValue) / oldValue) > sensitivityThreshold) {
+                        fluctuation++;
+                        fluctuation = (fluctuation > 6) ? 6 : fluctuation;
+                    } else {
+                        fluctuation--;
+                        fluctuation = (fluctuation < 1) ? 1 : fluctuation;
+                    }
+
+                    let bodyReq = {
+                        name: name,
+                        value: value,
+                        fluctuation: fluctuation,
+                        history: {
+                            value: oldValue,
+                            date: currenciesMap.get(name).date
                         }
-                        
+                    }
+
+                    if (name != "LBP") {
+
                         await fetch(IP + "/updateCurrency", {
-                            method: 'POST',
-                            headers: {
-                                Accept: 'application/json',
-                                'Content-type': 'application/json'
-                            },
-                            body: JSON.stringify(bodyReq)
-                        })
+                                method: 'POST',
+                                headers: {
+                                    Accept: 'application/json',
+                                    'Content-type': 'application/json'
+                                },
+                                body: JSON.stringify(bodyReq)
+                            })
                             .then(res => res.json())
                             .then(res => {
                                 console.log("saved currency!", res);
                             })
                     }
                 }
-});
+            }
+        });
 }
 
+async function updateLbp() {
+
+    fetch("https://lirarate.org//wp-json/lirarate/v2/rates?currency=LBP", {
+            method: 'GET',
+            headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                'Authorization': 'Bearer eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJpc3MiOiJodHRwczpcL1wvbGlyYXJhdGUub3JnIiwiaWF0IjoxNjIwOTQxNDM5LCJuYmYiOjE2MjA5NDE0MzksImV4cCI6MTY1MzA4MjIzOSwiZGF0YSI6eyJ1c2VyIjp7ImlkIjoiMiJ9fX0.l0U9oMeNMbkGGpUtrllYh7cqt7blxuZCqSlOO-7hbsI'
+            },
+        }).then(res => res.json())
+        .then(async resJson => {
+            let currentLbp = await Currency.findOne({
+                name: "LBP"
+            });
+            let oldVal = currentLbp.value;
+            let oldUpdateDate = currentLbp.updateDate;
+            let bodyReq = {
+                name: "LBP",
+                value: resJson.buy[resJson.buy.length - 1][1],
+                fluctuation: 6,
+                history: {
+                    value: oldVal,
+                    date: oldUpdateDate,
+                }
+            }
+            console.log("body reqqq ===> " + JSON.stringify(bodyReq));
+            await fetch(IP + "/updateCurrency", {
+                    method: 'POST',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-type': 'application/json'
+                    },
+                    body: JSON.stringify(bodyReq)
+                })
+                .then(res => res.json())
+                .then(res => {
+                    console.log("saved currency!", res);
+                })
+        })
+}
+
+async function updateLbpManually() {
+
+    console.log("inn updating lbp manually");
+
+
+    let currentLbp = await Currency.findOne({
+        name: "LBP"
+    });
+    let oldVal = currentLbp.value;
+    let oldUpdateDate = currentLbp.updateDate;
+    let bodyReq = {
+        name: "LBP",
+        value: 26400,
+        fluctuation: 6,
+        history: {
+            value: oldVal,
+            date: oldUpdateDate,
+        }
+    }
+    console.log("body reqqq ===> " + JSON.stringify(bodyReq));
+    await fetch(IP + "/updateCurrency", {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json',
+                'Content-type': 'application/json'
+            },
+            body: JSON.stringify(bodyReq)
+        })
+        .then(res => res.json())
+        .then(res => {
+            console.log("saved currency!", res);
+        })
+}
 //currency update every 4 hours
 setInterval(fetchCurrencies, 14400000);
+
+// used to manually call the functions
+// fetchCurrencies();
+// updateLbp();
+// updateLbpManually();
 
 app.use("*", (req, res) => {
     res.status(404).json({
