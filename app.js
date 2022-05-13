@@ -26,7 +26,9 @@ app.get("/", (req, res) => {
 
 const User = require("./model/user");
 
-//USER
+const Market = require("./model/market");
+
+//USER related APIS
 //Register API
 app.post("/register", async (req, res) => {
 
@@ -88,7 +90,7 @@ app.post("/register", async (req, res) => {
 });
 
 
-// Login
+// Login API
 app.post("/login", async (req, res) => {
 
     // Our login logic starts here
@@ -166,8 +168,7 @@ app.post("/addUserCurrency", async (req, res) => {
             res.status(400).send("All input is required");
         }
 
-        // check if user already exist
-        // Validate if user exist in our database
+        
         const curr = await Currency.findOne({
             name
         });
@@ -199,8 +200,6 @@ app.post("/deleteUserCurrency", async (req, res) => {
             res.status(400).send("All input is required");
         }
 
-        // check if user already exist
-        // Validate if user exist in our database
         const curr = await Currency.findOne({
             name
         });
@@ -219,6 +218,122 @@ app.post("/deleteUserCurrency", async (req, res) => {
     }
 });
 
+//add currency with amount to specified user
+app.post("/addCurrencyAmount", async (req, res) => {
+    try {
+        // Get user input
+        const {
+            email,
+            name,
+            amount
+        } = req.body;
+        // Validate user input
+        if (!(name && email && amount)) {
+            res.status(400).send("All input is required");
+        }
+
+        const curr = await Currency.findOne({
+            name
+        });
+        const user = await User.findOne({
+            email
+        });
+        console.log(curr);
+        console.log(user);
+        if(curr!=null && user!=null){
+        //query to get the user object only containing queried currency in currency wallet
+        const currencyInWallet= await User.findOne({ email,"CurrencyWallet.currency": curr._id}, {_id: 0,  currencyWallet: {$elemMatch: {currency: curr._id}}});
+        console.log(currencyInWallet);
+        //checks if the user has the currency already in his wallet
+        if(currencyInWallet.currencyWallet === undefined||currencyInWallet.currencyWallet.length==0){
+        //create new entry in wallet
+        const userUpdate = await User.updateOne({
+            email
+        }, {
+            $push: {
+                currencyWallet: {
+                    currency: curr._id,
+                    amount:amount
+                }
+            }
+        });
+        }
+        else{
+            //update old entry in wallet
+            const userUpdate = await User.updateOne({
+            email, "currencyWallet.currency" : curr._id
+        },
+        {
+            $set: {
+                //set the currency amount to old amount + new amount
+                "currencyWallet.$.amount": (parseInt(currencyInWallet.currencyWallet[0].amount)+parseInt(amount))
+            }
+        });
+        }
+        res.status(201).json(curr._id);
+    }
+    else
+        res.status(404).send("Currency or User does not Exist!");
+    } catch (err) {
+        console.log(err);
+    }
+});
+
+//remove currency with amount from specified user
+app.post("/removeCurrencyAmount", async (req, res) => {
+    try {
+        // Get user input
+        const {
+            email,
+            name,
+            amount
+        } = req.body;
+        // Validate user input
+        if (!(name && email && amount)) {
+            res.status(400).send("All input is required");
+        }
+
+        const curr = await Currency.findOne({
+            name
+        });
+        const user = await User.findOne({
+            email
+        });
+        console.log(curr);
+        console.log(user);
+        if(curr!=null && user!=null){
+        //query to get the user object only containing queried currency in currency wallet
+        let currencyInWallet= await User.findOne({ email,"CurrencyWallet.currency": curr._id}, {_id: 0,  currencyWallet: {$elemMatch: {currency: curr._id}}});
+        console.log(currencyInWallet);
+        //checks if the user has the currency in his wallet
+        if(currencyInWallet.currencyWallet === undefined || currencyInWallet.currencyWallet.length != 0){
+            //update old entry in wallet
+            if(parseInt(currencyInWallet.currencyWallet[0].amount)-parseInt(amount)>=0){
+            const userUpdate = await User.updateOne({
+            email, "currencyWallet.currency" : curr._id
+            },
+            {
+            $set: {
+                //set the currency amount to old amount - new amount
+                "currencyWallet.$.amount": (parseInt(currencyInWallet.currencyWallet[0].amount)-parseInt(amount))
+                }
+            });
+            res.status(201).json(curr._id);
+            }
+            else{
+                res.send(`${user.email} has insufficient funds of ${curr.name}`);
+            }
+
+        }
+        else
+            res.send(`${user.email} does not own ${curr.name}`);
+    }
+    else
+        res.status(404).send("Currency or User does not Exist!");
+    } catch (err) {
+        console.log(err);
+    }
+});
 //********
 
 // app.get("/welcome", auth, (req, res) => {
@@ -411,39 +526,39 @@ async function updateLbp() {
         })
 }
 
-async function updateLbpManually() {
+// async function updateLbpManually() {
 
-    console.log("inn updating lbp manually");
+//     console.log("inn updating lbp manually");
 
 
-    let currentLbp = await Currency.findOne({
-        name: "LBP"
-    });
-    let oldVal = currentLbp.value;
-    let oldUpdateDate = currentLbp.updateDate;
-    let bodyReq = {
-        name: "LBP",
-        value: 26400,
-        fluctuation: 6,
-        history: {
-            value: oldVal,
-            date: oldUpdateDate,
-        }
-    }
-    console.log("body reqqq ===> " + JSON.stringify(bodyReq));
-    await fetch(IP + "/updateCurrency", {
-            method: 'POST',
-            headers: {
-                Accept: 'application/json',
-                'Content-type': 'application/json'
-            },
-            body: JSON.stringify(bodyReq)
-        })
-        .then(res => res.json())
-        .then(res => {
-            console.log("saved currency!", res);
-        })
-}
+//     let currentLbp = await Currency.findOne({
+//         name: "LBP"
+//     });
+//     let oldVal = currentLbp.value;
+//     let oldUpdateDate = currentLbp.updateDate;
+//     let bodyReq = {
+//         name: "LBP",
+//         value: 26400,
+//         fluctuation: 6,
+//         history: {
+//             value: oldVal,
+//             date: oldUpdateDate,
+//         }
+//     }
+//     console.log("body reqqq ===> " + JSON.stringify(bodyReq));
+//     await fetch(IP + "/updateCurrency", {
+//             method: 'POST',
+//             headers: {
+//                 Accept: 'application/json',
+//                 'Content-type': 'application/json'
+//             },
+//             body: JSON.stringify(bodyReq)
+//         })
+//         .then(res => res.json())
+//         .then(res => {
+//             console.log("saved currency!", res);
+//         })
+// }
 //currency update every 4 hours
 setInterval(fetchCurrencies, 14400000);
 
@@ -451,6 +566,71 @@ setInterval(fetchCurrencies, 14400000);
 // fetchCurrencies();
 // updateLbp();
 // updateLbpManually();
+
+
+
+//MARKET APIS
+//Add market listing
+app.post("/addMarketListing", async (req, res) => {
+    try {
+        // Get user input
+        const {
+            user_email,
+            curr_name,
+            curr_amount,
+            accepted_curr
+        } = req.body;
+        // Validate user input
+        if (!(user_email && curr_name && curr_amount && accepted_curr)) {
+            res.status(400).send("All input is required");
+        }
+
+        const curr = await Currency.findOne({
+            "name":curr_name
+        });
+        const user = await User.findOne({
+            "email":user_email
+        });
+        console.log(curr);
+        console.log(user);
+        if(curr!=null && user!=null){
+        //query to get the user object only containing queried currency in currency wallet
+        let currencyInWallet= await User.findOne({ "email":user_email, "CurrencyWallet.currency": curr._id}, {_id: 0,  currencyWallet: {$elemMatch: {currency: curr._id}}});
+        console.log(currencyInWallet);
+        //checks if the user has the currency in his wallet
+        if(currencyInWallet.currencyWallet === undefined || currencyInWallet.currencyWallet.length != 0){
+            // if user has enough funds to put up the listing, listing will be created.
+            if(parseInt(currencyInWallet.currencyWallet[0].amount)-parseInt(curr_amount)>=0){
+
+                const listing = await Market.create({
+                user_email,
+                curr_name,
+                curr_amount,
+                accepted_curr
+                });
+                res.status(200).send(listing);
+            }
+            else{
+                res.send(`${user.email} has insufficient funds of ${curr.name}`);
+            }
+
+        }
+        else
+            res.send(`${user.email} does not own ${curr.name}`);
+    }
+    else
+        res.status(404).send("Currency or User does not Exist!");
+    } catch (err) {
+        console.log(err);
+    }
+});
+
+app.get("/getMarketListings", async (req, res) => {
+    const allListings = await Market.find();
+    res.status(200).json(allListings);
+});
+
+
 
 app.use("*", (req, res) => {
     res.status(404).json({
