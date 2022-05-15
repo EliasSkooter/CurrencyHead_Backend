@@ -138,6 +138,7 @@ app.post("/login", async (req, res) => {
                 "email": user.email,
                 "token": user.token,
                 "currencies": user.currencies,
+                "currencyWallet": user.currencyWallet
             };
             res.send(userDetails);
 
@@ -168,7 +169,7 @@ app.post("/addUserCurrency", async (req, res) => {
             res.status(400).send("All input is required");
         }
 
-        
+
         const curr = await Currency.findOne({
             name
         });
@@ -240,40 +241,48 @@ app.post("/addCurrencyAmount", async (req, res) => {
         });
         // console.log(curr);
         // console.log(user);
-        if(curr!=null && user!=null){
-        //query to get the user object only containing queried currency in currency wallet
-        const currencyInWallet= await User.findOne({ email,"CurrencyWallet.currency": curr._id}, {_id: 0,  currencyWallet: {$elemMatch: {currency: curr._id}}});
-        // console.log(currencyInWallet);
-        //checks if the user has the currency already in his wallet
-        if(currencyInWallet.currencyWallet === undefined||currencyInWallet.currencyWallet.length==0){
-        //create new entry in wallet
-        const userUpdate = await User.updateOne({
-            email
-        }, {
-            $push: {
+        if (curr != null && user != null) {
+            //query to get the user object only containing queried currency in currency wallet
+            const currencyInWallet = await User.findOne({
+                email,
+                "CurrencyWallet.currency": curr._id
+            }, {
+                _id: 0,
                 currencyWallet: {
-                    currency: curr._id,
-                    amount:amount
+                    $elemMatch: {
+                        currency: curr._id
+                    }
                 }
+            });
+            // console.log(currencyInWallet);
+            //checks if the user has the currency already in his wallet
+            if (currencyInWallet.currencyWallet === undefined || currencyInWallet.currencyWallet.length == 0) {
+                //create new entry in wallet
+                const userUpdate = await User.updateOne({
+                    email
+                }, {
+                    $push: {
+                        currencyWallet: {
+                            currency: curr._id,
+                            amount: amount
+                        }
+                    }
+                });
+            } else {
+                //update old entry in wallet
+                const userUpdate = await User.updateOne({
+                    email,
+                    "currencyWallet.currency": curr._id
+                }, {
+                    $set: {
+                        //set the currency amount to old amount + new amount
+                        "currencyWallet.$.amount": (parseInt(currencyInWallet.currencyWallet[0].amount) + parseInt(amount))
+                    }
+                });
             }
-        });
-        }
-        else{
-            //update old entry in wallet
-            const userUpdate = await User.updateOne({
-            email, "currencyWallet.currency" : curr._id
-        },
-        {
-            $set: {
-                //set the currency amount to old amount + new amount
-                "currencyWallet.$.amount": (parseInt(currencyInWallet.currencyWallet[0].amount)+parseInt(amount))
-            }
-        });
-        }
-        res.status(201).json(curr._id);
-    }
-    else
-        res.status(404).send("Currency or User does not Exist!");
+            res.status(201).json(curr._id);
+        } else
+            res.status(404).send("Currency or User does not Exist!");
     } catch (err) {
         console.log(err);
     }
@@ -301,48 +310,55 @@ app.post("/removeCurrencyAmount", async (req, res) => {
         });
         // console.log(curr);
         // console.log(user);
-        if(curr!=null && user!=null){
-        //query to get the user object only containing queried currency in currency wallet
-        let currencyInWallet= await User.findOne({ email,"CurrencyWallet.currency": curr._id}, {_id: 0,  currencyWallet: {$elemMatch: {currency: curr._id}}});
-        // console.log(currencyInWallet);
-        //checks if the user has the currency in his wallet
-        if(currencyInWallet.currencyWallet === undefined || currencyInWallet.currencyWallet.length != 0){
-            //update old entry in wallet
-            if(parseInt(currencyInWallet.currencyWallet[0].amount)-parseInt(amount)>=0){
-            const userUpdate = await User.updateOne({
-            email, "currencyWallet.currency" : curr._id
-            },
-            {
-            $set: {
-                //set the currency amount to old amount - new amount
-                "currencyWallet.$.amount": (parseInt(currencyInWallet.currencyWallet[0].amount)-parseInt(amount))
+        if (curr != null && user != null) {
+            //query to get the user object only containing queried currency in currency wallet
+            let currencyInWallet = await User.findOne({
+                email,
+                "CurrencyWallet.currency": curr._id
+            }, {
+                _id: 0,
+                currencyWallet: {
+                    $elemMatch: {
+                        currency: curr._id
+                    }
                 }
             });
-            res.status(201).send("1");
-            console.log(curr._id);
-            }
-            else{
-                res.send("0");
-                console.log(`${user.email} has insufficient funds of ${curr.name}`);
-            }
+            // console.log(currencyInWallet);
+            //checks if the user has the currency in his wallet
+            if (currencyInWallet.currencyWallet === undefined || currencyInWallet.currencyWallet.length != 0) {
+                //update old entry in wallet
+                if (parseInt(currencyInWallet.currencyWallet[0].amount) - parseInt(amount) >= 0) {
+                    const userUpdate = await User.updateOne({
+                        email,
+                        "currencyWallet.currency": curr._id
+                    }, {
+                        $set: {
+                            //set the currency amount to old amount - new amount
+                            "currencyWallet.$.amount": (parseInt(currencyInWallet.currencyWallet[0].amount) - parseInt(amount))
+                        }
+                    });
+                    res.status(201).send("1");
+                    console.log(curr._id);
+                } else {
+                    res.send("0");
+                    console.log(`${user.email} has insufficient funds of ${curr.name}`);
+                }
 
+            } else {
+                res.send("0");
+                console.log(`${user.email} does not own ${curr.name}`);
+            }
+        } else {
+            res.status(404).send("0")
+            console.log("Currency or User does not Exist!");
         }
-        else{
-            res.send("0");
-            console.log(`${user.email} does not own ${curr.name}`);
-        }
-    }
-    else{
-        res.status(404).send("0")
-        console.log("Currency or User does not Exist!");
-    }
     } catch (err) {
         console.log(err);
     }
 });
 
 //exchange currency between users
-app.post("/exchangeCurrencyAmount", async(req,res)=>{
+app.post("/exchangeCurrencyAmount", async (req, res) => {
     try {
         // Get user input
         const {
@@ -352,7 +368,7 @@ app.post("/exchangeCurrencyAmount", async(req,res)=>{
             buyer_email,
             buyer_curr_name,
         } = req.body;
-        
+
 
         // Validate user input
         if (!(lister_curr_amount && lister_email && lister_curr_name && buyer_email && buyer_curr_name)) {
@@ -360,27 +376,27 @@ app.post("/exchangeCurrencyAmount", async(req,res)=>{
         }
 
         const buyerCurr = await Currency.findOne({
-            "name":buyer_curr_name
+            "name": buyer_curr_name
         });
         const listerCurr = await Currency.findOne({
-            "name":lister_curr_name
+            "name": lister_curr_name
         });
         //buyer_amount = lister_curr_ammoun * buyer_rate/lister_rate
-        let buyer_amount = lister_curr_amount * (buyerCurr.value/listerCurr.value);
+        let buyer_amount = lister_curr_amount * (buyerCurr.value / listerCurr.value);
         let buyerRmReq = {
             email: buyer_email,
             name: buyer_curr_name,
-            amount: buyer_amount                
-                };
+            amount: buyer_amount
+        };
         let buyAddReq = {
             email: buyer_email,
             name: lister_curr_name,
-            amount: lister_curr_amount 
+            amount: lister_curr_amount
         };
         let listerAddReq = {
             email: lister_email,
             name: buyer_curr_name,
-            amount: buyer_amount 
+            amount: buyer_amount
         };
         let marketListRmReq = {
             user_email: lister_email,
@@ -389,66 +405,66 @@ app.post("/exchangeCurrencyAmount", async(req,res)=>{
         }
         let result = "1";
         await fetch(IP + "/removeCurrencyAmount", {
-                                method: 'POST',
-                                headers: {
-                                    Accept: 'application/json',
-                                    'Content-type': 'application/json'
-                                },
-                                body: JSON.stringify(buyerRmReq)
-                            })
-                            .then(res => res.text())
-                            .then(res => {
-                                result = res;
-                                console.log(res);
-                            });
-                        //successfully removed amount from buyer
-                        if(result == "1"){
-                            await fetch(IP + "/addCurrencyAmount", {
-                                method: 'POST',
-                                headers: {
-                                    Accept: 'application/json',
-                                    'Content-type': 'application/json'
-                                },
-                                body: JSON.stringify(buyAddReq)
-                            })
-                            .then(res => res.text())
-                            .then(res => {
-                                result = res;
-                                console.log(res);
-                            });
-                            await fetch(IP + "/addCurrencyAmount", {
-                                method: 'POST',
-                                headers: {
-                                    Accept: 'application/json',
-                                    'Content-type': 'application/json'
-                                },
-                                body: JSON.stringify(listerAddReq)
-                            })
-                            .then(res => res.text())
-                            .then(res => {
-                                result = res;
-                                console.log(res);
-                            });
-                            await fetch(IP + "/removeMarketListing", {
-                                method: 'POST',
-                                headers: {
-                                    Accept: 'application/json',
-                                    'Content-type': 'application/json'
-                                },
-                                body: JSON.stringify(marketListRmReq)
-                            })
-                            .then(res => res.text())
-                            .then(res => {
-                                result = res;
-                                console.log(res);
-                            });
+                method: 'POST',
+                headers: {
+                    Accept: 'application/json',
+                    'Content-type': 'application/json'
+                },
+                body: JSON.stringify(buyerRmReq)
+            })
+            .then(res => res.text())
+            .then(res => {
+                result = res;
+                console.log(res);
+            });
+        //successfully removed amount from buyer
+        if (result == "1") {
+            await fetch(IP + "/addCurrencyAmount", {
+                    method: 'POST',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-type': 'application/json'
+                    },
+                    body: JSON.stringify(buyAddReq)
+                })
+                .then(res => res.text())
+                .then(res => {
+                    result = res;
+                    console.log(res);
+                });
+            await fetch(IP + "/addCurrencyAmount", {
+                    method: 'POST',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-type': 'application/json'
+                    },
+                    body: JSON.stringify(listerAddReq)
+                })
+                .then(res => res.text())
+                .then(res => {
+                    result = res;
+                    console.log(res);
+                });
+            await fetch(IP + "/removeMarketListing", {
+                    method: 'POST',
+                    headers: {
+                        Accept: 'application/json',
+                        'Content-type': 'application/json'
+                    },
+                    body: JSON.stringify(marketListRmReq)
+                })
+                .then(res => res.text())
+                .then(res => {
+                    result = res;
+                    console.log(res);
+                });
 
-                            res.status(200).send("nice");
-                        }
-                        //failed to remove amount from buyer(insufficient funds maybe)
-                        else if (result == "0"){
-                            res.status(200).send("not nice");
-                        }
+            res.status(200).send("nice");
+        }
+        //failed to remove amount from buyer(insufficient funds maybe)
+        else if (result == "0") {
+            res.status(200).send("not nice");
+        }
     } catch (err) {
         console.log(err);
     }
@@ -645,39 +661,39 @@ async function updateLbp() {
         })
 }
 
-// async function updateLbpManually() {
+async function updateLbpManually() {
 
-//     console.log("inn updating lbp manually");
+    console.log("inn updating lbp manually");
 
 
-//     let currentLbp = await Currency.findOne({
-//         name: "LBP"
-//     });
-//     let oldVal = currentLbp.value;
-//     let oldUpdateDate = currentLbp.updateDate;
-//     let bodyReq = {
-//         name: "LBP",
-//         value: 26400,
-//         fluctuation: 6,
-//         history: {
-//             value: oldVal,
-//             date: oldUpdateDate,
-//         }
-//     }
-//     console.log("body reqqq ===> " + JSON.stringify(bodyReq));
-//     await fetch(IP + "/updateCurrency", {
-//             method: 'POST',
-//             headers: {
-//                 Accept: 'application/json',
-//                 'Content-type': 'application/json'
-//             },
-//             body: JSON.stringify(bodyReq)
-//         })
-//         .then(res => res.json())
-//         .then(res => {
-//             console.log("saved currency!", res);
-//         })
-// }
+    let currentLbp = await Currency.findOne({
+        name: "LBP"
+    });
+    let oldVal = currentLbp.value;
+    let oldUpdateDate = currentLbp.updateDate;
+    let bodyReq = {
+        name: "LBP",
+        value: 27450,
+        fluctuation: 6,
+        history: {
+            value: oldVal,
+            date: oldUpdateDate,
+        }
+    }
+    console.log("body reqqq ===> " + JSON.stringify(bodyReq));
+    await fetch(IP + "/updateCurrency", {
+            method: 'POST',
+            headers: {
+                Accept: 'application/json',
+                'Content-type': 'application/json'
+            },
+            body: JSON.stringify(bodyReq)
+        })
+        .then(res => res.json())
+        .then(res => {
+            console.log("saved currency!", res);
+        })
+}
 //currency update every 4 hours
 setInterval(fetchCurrencies, 14400000);
 
@@ -705,50 +721,57 @@ app.post("/addMarketListing", async (req, res) => {
         }
 
         const curr = await Currency.findOne({
-            "name":curr_name
+            "name": curr_name
         });
         const user = await User.findOne({
-            "email":user_email
+            "email": user_email
         });
         console.log(curr);
         console.log(user);
-        if(curr!=null && user!=null){
-        //query to get the user object only containing queried currency in currency wallet
-        let currencyInWallet= await User.findOne({ "email":user_email, "CurrencyWallet.currency": curr._id}, {_id: 0,  currencyWallet: {$elemMatch: {currency: curr._id}}});
-        console.log(currencyInWallet);
-        //checks if the user has the currency in his wallet
-        if(currencyInWallet.currencyWallet === undefined || currencyInWallet.currencyWallet.length != 0){
-            // if user has enough funds to put up the listing, listing will be created.
-            if(parseInt(currencyInWallet.currencyWallet[0].amount)-parseInt(curr_amount)>=0){
-
-                const userUpdate = await User.updateOne({
-                    "email":user_email, "currencyWallet.currency" : curr._id
-                },
-                {
-                $set: {
-                    //set the currency amount to old amount - new amount
-                    "currencyWallet.$.amount": (parseInt(currencyInWallet.currencyWallet[0].amount)-parseInt(curr_amount))
+        if (curr != null && user != null) {
+            //query to get the user object only containing queried currency in currency wallet
+            let currencyInWallet = await User.findOne({
+                "email": user_email,
+                "CurrencyWallet.currency": curr._id
+            }, {
+                _id: 0,
+                currencyWallet: {
+                    $elemMatch: {
+                        currency: curr._id
                     }
-                });
+                }
+            });
+            console.log(currencyInWallet);
+            //checks if the user has the currency in his wallet
+            if (currencyInWallet.currencyWallet === undefined || currencyInWallet.currencyWallet.length != 0) {
+                // if user has enough funds to put up the listing, listing will be created.
+                if (parseInt(currencyInWallet.currencyWallet[0].amount) - parseInt(curr_amount) >= 0) {
 
-                const listing = await Market.create({
-                user_email,
-                curr_name,
-                curr_amount,
-                accepted_curr
-                });
-                res.status(200).send(listing);
-            }
-            else{
-                res.send(`${user.email} has insufficient funds of ${curr.name}`);
-            }
+                    const userUpdate = await User.updateOne({
+                        "email": user_email,
+                        "currencyWallet.currency": curr._id
+                    }, {
+                        $set: {
+                            //set the currency amount to old amount - new amount
+                            "currencyWallet.$.amount": (parseInt(currencyInWallet.currencyWallet[0].amount) - parseInt(curr_amount))
+                        }
+                    });
 
-        }
-        else
-            res.send(`${user.email} does not own ${curr.name}`);
-    }
-    else
-        res.status(404).send("Currency or User does not Exist!");
+                    const listing = await Market.create({
+                        user_email,
+                        curr_name,
+                        curr_amount,
+                        accepted_curr
+                    });
+                    res.status(200).send(listing);
+                } else {
+                    res.send(`${user.email} has insufficient funds of ${curr.name}`);
+                }
+
+            } else
+                res.send(`${user.email} does not own ${curr.name}`);
+        } else
+            res.status(404).send("Currency or User does not Exist!");
     } catch (err) {
         console.log(err);
     }
@@ -763,14 +786,16 @@ app.post("/removeMarketListing", async (req, res) => {
             curr_name,
             curr_amount
         } = req.body;
-    if (!(user_email && curr_name && curr_amount)) {
-        res.status(400).send("All input is required");
-    }
-    const removedDoc = await Market.deleteOne({
-            user_email, curr_name, curr_amount
+        if (!(user_email && curr_name && curr_amount)) {
+            res.status(400).send("All input is required");
+        }
+        const removedDoc = await Market.deleteOne({
+            user_email,
+            curr_name,
+            curr_amount
         });
-    res.status(200).send("Listing removed");
-    }catch(err) {
+        res.status(200).send("Listing removed");
+    } catch (err) {
         console.log(err);
     }
 });
