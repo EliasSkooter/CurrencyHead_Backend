@@ -280,7 +280,7 @@ app.post("/addCurrencyAmount", async (req, res) => {
                     }
                 });
             }
-            res.status(201).json(curr._id);
+            res.status(201).json(user);
         } else
             res.status(404).send("Currency or User does not Exist!");
     } catch (err) {
